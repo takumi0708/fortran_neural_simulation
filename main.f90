@@ -26,6 +26,10 @@ program main
 
     print *, "time, voltage"
 		
+    ! ファイル保存
+    ! 同じファイルあれば上書き
+    ! 10 は識別番号
+    open(10, file="output.dat", status = "replace")
 		
     do step = 1, n_steps
 
@@ -35,15 +39,16 @@ program main
         voltage = voltage + dt * ( &
             -(voltage - resting_voltage) + input_current &
         ) / tau
-
-        print *, time, voltage
         
         ! 発火したら膜電位をリセット
         if(voltage >= threshold) then
-          print *, "spike!"
+          
           voltage = resting_voltage
         end if
 
+        write(10, *) time, voltage
+
     end do
+    close(10)
 
 end program main
