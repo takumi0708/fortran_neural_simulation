@@ -1,54 +1,82 @@
-program main
+program main_mpi
+    use mpi
+    use neuron_module
     implicit none
-		
-		! 変数宣言
-    integer :: step !現在の計算回数
-    integer :: n_steps !計算する合計回数
-		
-    real :: voltage ! 現在の膜電位
-    real :: resting_voltage ! 静止膜電位
-    real :: input_current !外部から与える刺激
-    real :: dt
-    real :: tau !膜電位の変化の速さを決める値
-    real :: time !時間
-    real :: threshold ! 発火閾値
-	
-		!静止膜電位を -65 mV とし、最初の膜電位も -65 mV
-    resting_voltage = -65.0
-    voltage = resting_voltage
 
-    input_current = 30.0
+    integer :: ierr
+    integer :: rank
+    integer :: n_processes
+
+    integer :: step
+    integer :: n_steps
+    integer :: i
+    integer :: n_neurons
+    integer :: local_n
+
+    real :: resting_voltage
+    real :: dt
+    real :: tau
+    real :: time
+    real :: threshold
+    real :: synaptic_input
+
+    real, allocatable :: voltage(:)
+    real, allocatable :: input_current(:)
+    logical, allocatable :: spike(:)
+
+    ! MPI開始
+    call MPI_Init(ierr)
+
+    ! 自分のプロセス番号
+    call MPI_Comm_rank(MPI_COMM_WORLD, rank, ierr)
+
+    ! 全プロセス数
+    call MPI_Comm_size(MPI_COMM_WORLD, n_processes, ierr)
+
+    ! 基本設定
+    resting_voltage = -65.0
     dt = 0.1
     tau = 20.0
     threshold = -50.0
+    synaptic_input = 0.0
 
     n_steps = 1000
+    n_neurons = 10000
 
-    print *, "time, voltage"
-		
-    ! ファイル保存
-    ! 同じファイルあれば上書き
-    ! 10 は識別番号
-    open(10, file="output.dat", status = "replace")
-		
+    ! 各プロセスが担当するニューロン数
+    local_n = n_neurons / n_processes
+
+    allocate(voltage(local_n))
+    allocate(input_current(local_n))
+    allocate(spike(local_n))
+
+    voltage = resting_voltage
+    input_current = 30.0
+    spike = .false.
+
     do step = 1, n_steps
 
         time = step * dt
 
-        ! LIF（Leaky Integrate-and-Fire model）モデル　
-        voltage = voltage + dt * ( &
-            -(voltage - resting_voltage) + input_current &
-        ) / tau
-        
-        ! 発火したら膜電位をリセット
-        if(voltage >= threshold) then
-          
-          voltage = resting_voltage
-        end if
+        do i = 1, local_n
 
-        write(10, *) time, voltage
+            call update_neuron( &
+                voltage(i), resting_voltage, input_current(i), &
+                synaptic_input, dt, tau, threshold, spike(i) &
+            )
+
+        end do
 
     end do
-    close(10)
 
-end program main
+    print *, "rank =", rank, "担当数 =", local_n, &
+             "最終膜電位 =", voltage(1)
+
+    deallocate(voltage)
+    deallocate(input_current)
+    deallocate(spike)
+
+    ! MPI終了
+    call MPI_Finalize(ierr)
+
+end program main_mpi
